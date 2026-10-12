@@ -57,7 +57,7 @@ pip install -r requirements.txt
 ## Run, in this order
 
 Always as modules from the project root (`python -m pipeline.x`), never `python pipeline/x.py`:
-the package uses relative imports. In PyCharm use the shared run configurations "1 catalog" .. "4 audit".
+the package uses relative imports. In PyCharm, set the run configuration to "Module name" (e.g. `pipeline.catalog`) with the project root as working directory.
 
 ```bash
 python -m pipeline.catalog          #  games, sets, products            (daily)

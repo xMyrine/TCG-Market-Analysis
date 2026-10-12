@@ -59,7 +59,6 @@ def era_medians(df: pl.DataFrame) -> pl.DataFrame:
             .sort("era"))
 
 
-# Rarities present in (nearly) every era: the only ones that can identify an era premium.
 SHARED_RARITIES = ["Common", "Uncommon", "Rare", "Holo Rare"]
 REFERENCE = {"era": "09 SV", "rarity": "Common", "printing": "normal", "card_class": "pokemon"}
 
