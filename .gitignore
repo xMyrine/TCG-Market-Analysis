@@ -1,0 +1,5 @@
+# Derived data: rebuildable from code + public sources
+data/
+__pycache__/
+*.pyc
+.venv/
