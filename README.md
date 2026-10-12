@@ -1,12 +1,56 @@
 # TCG market analysis: Pokémon & Riftbound vs the S&P 500
 
-Step 1 of the project: get trustworthy data onto disk.
+Are trading cards an asset class? This project collects daily TCGplayer prices for the
+Pokémon and Riftbound trading card games and analyses them the way you would analyse a
+financial market: returns against the S&P 500 total return index, risk, what drives prices,
+and whether any of it can be predicted.
+
+It is a learning project in data analysis and data science (Python, polars, DuckDB,
+statsmodels). Methods, decisions and dead ends are documented in [`docs/`](docs/).
+
+> **Status (2026-10):** the data pipeline collects one price snapshot per day since
+> 2026-10-11. Cross-sectional questions can be answered now; the time-series questions are
+> waiting for history to accumulate (TCGplayer's public price archive went offline, see
+> [docs/data.md](docs/data.md)).
+
+## Research questions
+
+| # | Question | Method | Status |
+|---|---|---|---|
+| 1 | Did Pokémon and Riftbound grow more than the S&P 500 (total return, risk-adjusted)? | Chain-linked price indices vs `^SP500TR`, Sharpe ratio | waiting for data |
+| 2 | Does the size of a game's player base affect prices? | Panel of ~10 games | not started |
+| 3 | Is sealed product more stable than single cards? | Volatility after Geltner unsmoothing | waiting for data |
+| 4 | Which generation of cards is most expensive? | Medians of log price, hedonic regression | **[first result](docs/findings/q4-generation.md)** |
+| 5 | Will Riftbound keep outperforming? | Launch-cohort / event-time comparison | waiting for data |
+| 6 | Can prices be predicted? | Walk-forward backtest vs random walk | waiting for data |
+
+## Findings so far
+
+**Q4 — older generations are far more expensive, but not in a straight line.** For an
+otherwise identical card (same rarity, printing and card type), the price relative to
+Scarlet & Violet (2023–25):
+
+| Era | WotC 1999–03 | EX 2003–07 | DP/Pt 2007–10 | HGSS 2010–11 | BW 2011–14 | XY 2014–17 | SM 2017–20 | SWSH 2020–23 |
+|---|---|---|---|---|---|---|---|---|
+| Price ratio | **57×** | 36× | 13× | 17× | 5.7× | 3.3× | 3.5× | 1.0× |
+
+One snapshot cannot separate *cards appreciate with age* from *older eras were printed in
+smaller runs*; details and caveats in [docs/findings/q4-generation.md](docs/findings/q4-generation.md).
+
+## Data
+
+- **Prices and catalogue:** TCGplayer via [TCGCSV](https://tcgcsv.com) (daily snapshot, US market).
+- **Benchmarks:** S&P 500 total return and price index (Yahoo Finance), 3-month T-bill,
+  CPI and EUR/USD (FRED).
+
+This repository contains **no price data**. Run the pipeline to fetch it. Only aggregated
+results (medians, regression coefficients) are published here.
 
 ## Setup (once)
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate          
 pip install -r requirements.txt
 ```
 
@@ -16,10 +60,10 @@ Always as modules from the project root (`python -m pipeline.x`), never `python 
 the package uses relative imports. In PyCharm use the shared run configurations "1 catalog" .. "4 audit".
 
 ```bash
-python -m pipeline.catalog          # ~45 s: games, sets, products            (daily)
-python -m pipeline.prices --live    # ~45 s: today's price snapshot            (daily, after catalog)
-python -m pipeline.benchmarks       # ~5 s: S&P 500 TR, T-bill, CPI, EUR/USD    (any time)
-python -m pipeline.audit            # data quality report                      (whenever you look)
+python -m pipeline.catalog          #  games, sets, products            (daily)
+python -m pipeline.prices --live    #   today's price snapshot            (daily, after catalog)
+python -m pipeline.benchmarks       #  S&P 500 TR, T-bill, CPI, EUR/USD    (any time)
+python -m pipeline.audit            #   data quality report                      (whenever you look)
 ```
 
 TCGCSV refreshes prices once a day (~20:00 UTC). A second `--live` run on the same snapshot
@@ -29,18 +73,25 @@ Data goes to `<project>/data` (override with `TCG_DATA_DIR=...`). Every step is 
 
 Offline self-test (no network): `TCG_DATA_DIR=/tmp/tcg-sim python -m tests.simulate`
 
-## Tables
+Analyses (one module per research question): `python -m analysis.q4_generation`
 
-| Table | Grain (one row per…) | Key |
-|---|---|---|
-| `silver/dim_category` | game | `categoryId` |
-| `silver/dim_group` | set | `groupId` |
-| `silver/dim_product` | product (card, box, accessory) | `productId` |
-| `silver/fact_price` | product × printing × day | `(date, productId, subTypeName)` |
-| `silver/benchmarks` | series × day | `(date, series)` |
+## Repository layout
 
-## Assumptions to verify on the first real run
+```
+pipeline/   data ingestion: catalog -> prices -> benchmarks -> audit (writes data/)
+analysis/   one module per research question (reads data/silver/)
+tests/      offline end-to-end test on simulated data
+docs/       data notes, decision log, findings per question
+data/       not in git: raw -> bronze (per-day Parquet) -> silver (analysis tables)
+```
 
-- Archive members are laid out as `<date>/<categoryId>/<groupId>/prices`. `--inspect` prints the layout; if it differs, adjust `parse_member()` in `pipeline/prices.py`.
-- The Riftbound category name matches the regex in `pipeline/common.py` (`catalog` logs what it selected).
-- Product kind: extendedData decides card vs not-a-card (`Rarity = "Code Card"` -> `code_card`; `Number`/`Card Type`/`Rarity` -> `single`); non-cards default to `sealed`, and a narrow name rule finds the rare `accessory`. Audit section 5 lists the name-rule decisions.
+## Documentation
+
+- [docs/data.md](docs/data.md) — sources, tables, data-quality audit, known biases
+- [docs/decisions.md](docs/decisions.md) — decision log: what was decided, when, and why
+- [docs/findings/](docs/findings/) — one write-up per research question
+
+## Disclaimer
+
+Not affiliated with TCGplayer, TCGCSV, The Pokémon Company or Riot Games. Pokémon and
+Riftbound are trademarks of their respective owners. Nothing here is investment advice.
