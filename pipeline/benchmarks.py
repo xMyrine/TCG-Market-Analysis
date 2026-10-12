@@ -26,7 +26,9 @@ FRED = ["DTB3", "CPIAUCSL", "DEXUSEU"]
 def from_yahoo(name: str, ticker: str) -> pl.DataFrame:
     df = yf.download(ticker, start=START, auto_adjust=False, progress=False)
     close = df["Close"].squeeze()  # newer yfinance returns a column MultiIndex
-    out = pl.DataFrame({"date": close.index.date, "value": close.to_numpy()})
+    # Keep the index typed: `index.date` is an object array (Polars 2 keeps it as Object, not
+    # Date), and pandas 3 uses datetime64[s], which Polars rejects. Day resolution maps to Date.
+    out = pl.DataFrame({"date": close.index.to_numpy().astype("datetime64[D]"), "value": close.to_numpy()})
     return out.with_columns(pl.lit(name).alias("series"))
 
 
