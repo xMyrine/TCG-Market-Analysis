@@ -60,8 +60,9 @@ def main() -> None:
                 count(DISTINCT productId) FILTER (WHERE marketPrice IS NOT NULL) AS with_market_price
          FROM p GROUP BY ALL ORDER BY game, products DESC""")
     print("'other' products need a look - sample names:")
-    q("""SELECT game, name FROM dim_product WHERE product_kind = 'other'
-         USING SAMPLE 15 ROWS""")
+    # USING SAMPLE runs before WHERE, so filter in a subquery first, then sample.
+    q("""SELECT * FROM (SELECT game, name FROM dim_product WHERE product_kind = 'other')
+         USING SAMPLE reservoir(15 ROWS) REPEATABLE (42)""")
 
     section("6. Price parking: highPrice far above marketPrice")
     q("""SELECT game,
