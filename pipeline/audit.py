@@ -55,13 +55,15 @@ def main() -> None:
                 avg((highPrice IS NULL)::INT)   AS high_null
          FROM p GROUP BY game ORDER BY game""")
 
-    section("5. Product kinds: how much of the catalogue is single / sealed / other")
+    section("5. Product kinds: single / sealed / accessory / code_card")
     q("""SELECT game, product_kind, count(DISTINCT productId) AS products,
                 count(DISTINCT productId) FILTER (WHERE marketPrice IS NOT NULL) AS with_market_price
          FROM p GROUP BY ALL ORDER BY game, products DESC""")
-    print("'other' products need a look - sample names:")
+    print("Name-rule decisions need a look - accessories, and sealed products naming an accessory:")
     # USING SAMPLE runs before WHERE, so filter in a subquery first, then sample.
-    q("""SELECT * FROM (SELECT game, name FROM dim_product WHERE product_kind = 'other')
+    q("""SELECT * FROM (SELECT game, product_kind, name FROM dim_product
+                       WHERE product_kind = 'accessory'
+                          OR (product_kind = 'sealed' AND regexp_matches(name, '(?i)sleeve|playmat|deck box|binder|dice|coin')))
          USING SAMPLE reservoir(15 ROWS) REPEATABLE (42)""")
 
     section("6. Price parking: highPrice far above marketPrice")

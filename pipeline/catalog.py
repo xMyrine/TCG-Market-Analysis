@@ -21,35 +21,36 @@ import polars as pl
 from .common import (SILVER_DIR, TCGCSV, ensure_dirs, get_results, log, match_game,
                      setup_logging)
 
-# Heuristics for products WITHOUT a card number. Checked in order: accessories first,
-# because "Deck Box" or "Card Sleeves" would otherwise match the sealed patterns.
+# A standalone accessory names one AND nothing implying booster packs inside: on real data,
+# "Sleeved Booster Pack", "Pin Collection" and "Binder Collection" are all sealed product.
 ACCESSORY_RE = re.compile(
-    r"sleeve|playmat|play mat|deck box|binder|portfolio|code card|dice|coin|pin\b|"
-    r"toploader|storage|album|figure|plush|poster|lanyard|counter",
+    r"sleeves?\b|playmat|play mat|deck box|binder|portfolio|dice|coin|damage counter|"
+    r"toploader|storage|album|plush|lanyard|card case",
     re.IGNORECASE,
 )
-SEALED_RE = re.compile(
-    r"booster|elite trainer|display|bundle|collection|tin\b|blister|case\b|box|"
-    r"premium|starter|theme deck|champion deck|battle deck|build & battle|pack|gift set",
+HAS_PACKS_RE = re.compile(
+    r"booster|packs?\b|collection|blister|bundle|tins?\b|kit\b|chest|calendar|"
+    r"display|battle deck|theme deck|trainer box",
     re.IGNORECASE,
 )
 
 
 def classify(name: str, ext: dict[str, str]) -> str:
-    """single / sealed / accessory / other.
+    """single / sealed / accessory / code_card.
 
-    TCGplayer stores card attributes in extendedData; a collector number is the most
-    reliable signal that a product is an individual card. Everything else is decided by
-    name patterns, which is a heuristic - the audit step reports how many fall in 'other'
-    so we can refine the rules instead of trusting them blindly.
+    Structured extendedData decides card vs not-a-card; the name only finds the rare
+    accessory. Audited on the 2026-10 catalogue (30-product samples per class): within the
+    Pokemon and Riftbound categories nearly every non-card is sealed (TCGplayer sells
+    supplies in a separate category), so sealed is the default, not a leftover 'other'.
+    Code Cards (digital redemption codes) carry Rarity="Code Card" and must not count as singles.
     """
-    if ext.get("Number") or ext.get("Rarity"):
+    if ext.get("Rarity") == "Code Card" or re.search(r"code card", name, re.IGNORECASE):
+        return "code_card"
+    if ext.get("Number") or ext.get("Card Type") or ext.get("Rarity"):
         return "single"
-    if ACCESSORY_RE.search(name):
+    if ACCESSORY_RE.search(name) and not HAS_PACKS_RE.search(name):
         return "accessory"
-    if SEALED_RE.search(name):
-        return "sealed"
-    return "other"
+    return "sealed"
 
 
 def flatten_extended(items: list[dict] | None) -> dict[str, str]:
@@ -93,7 +94,7 @@ def main() -> None:
                 product_rows.append({
                     "game": cat["game"], "categoryId": cid, "groupId": g["groupId"],
                     "productId": p["productId"], "name": p.get("name"), "clean_name": p.get("cleanName"),
-                    "number": ext.get("Number"), "rarity": ext.get("Rarity"),
+                    "number": ext.get("Number"), "rarity": ext.get("Rarity"), "upc": ext.get("UPC"),
                     "product_kind": classify(p.get("name", ""), ext),
                     "url": p.get("url"), "extended_json": json.dumps(ext, ensure_ascii=False),
                 })

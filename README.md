@@ -38,4 +38,4 @@ Offline self-test (no network): `TCG_DATA_DIR=/tmp/tcg-sim python -m tests.simul
 
 - Archive members are laid out as `<date>/<categoryId>/<groupId>/prices`. `--inspect` prints the layout; if it differs, adjust `parse_member()` in `pipeline/prices.py`.
 - The Riftbound category name matches the regex in `pipeline/common.py` (`catalog` logs what it selected).
-- Sealed vs single vs accessory is a name-based heuristic for products without a card number. Audit section 5 lists the leftovers in `other`.
+- Product kind: extendedData decides card vs not-a-card (`Rarity = "Code Card"` -> `code_card`; `Number`/`Card Type`/`Rarity` -> `single`); non-cards default to `sealed`, and a narrow name rule finds the rare `accessory`. Audit section 5 lists the name-rule decisions.
