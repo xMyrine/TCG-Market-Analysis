@@ -63,6 +63,9 @@ def http_get(url: str, *, retries: int = 4, timeout: int = 60, stream: bool = Fa
             r = _session.get(url, timeout=timeout, stream=stream)
             if r.status_code == 404:
                 return r  # caller decides; e.g. a missing archive day
+            if 400 <= r.status_code < 500 and r.status_code != 429:
+                # client errors are deterministic: retrying only adds load to the server
+                raise RuntimeError(f"GET {url} -> HTTP {r.status_code}:\n{r.text[:1000]}")
             r.raise_for_status()
             return r
         except requests.RequestException as e:

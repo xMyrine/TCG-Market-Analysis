@@ -4,6 +4,10 @@ Run:
     python -m pipeline.prices --inspect 2024-02-08     # look inside one archive first
     python -m pipeline.prices --step 7                 # weekly sample, 2024-02-08 .. yesterday
     python -m pipeline.prices --step 1                 # later: fill in every day
+    python -m pipeline.prices --live                   # current snapshot via the API (run daily)
+
+NOTE (2026-10): TCGCSV has taken the archive offline (403 with a notice); --live is the
+only working source until it returns. Both paths write the same bronze day files.
 
 Each archive is a full snapshot of TCGplayer prices for every game on one day. We
 extract only the selected categories, parse them into rows and write one Parquet file
@@ -19,6 +23,7 @@ import argparse
 import json
 import shutil
 import tempfile
+import time
 from datetime import date, timedelta
 from pathlib import Path, PurePosixPath
 
@@ -74,6 +79,14 @@ def parse_member(name: str) -> tuple[int, int] | None:
         return None
 
 
+def payload_rows(d: date, cid: int, gid: int, payload: dict | list) -> list[dict]:
+    """One TCGCSV prices file (archive member or live API response) -> fact rows."""
+    results = payload.get("results", []) if isinstance(payload, dict) else payload
+    return [{"date": d, "categoryId": cid, "groupId": gid,
+             "productId": r.get("productId"), "subTypeName": r.get("subTypeName"),
+             **{f: r.get(f) for f in PRICE_FIELDS}} for r in results]
+
+
 def extract_day(archive: Path, d: date, category_ids: set[int]) -> pl.DataFrame:
     rows = []
     with py7zr.SevenZipFile(archive, mode="r") as z:
@@ -84,14 +97,40 @@ def extract_day(archive: Path, d: date, category_ids: set[int]) -> pl.DataFrame:
             for name in targets:
                 cid, gid = parse_member(name)
                 payload = json.loads((Path(tmpdir) / name).read_text(encoding="utf-8"))
-                results = payload.get("results", []) if isinstance(payload, dict) else payload
-                for r in results:
-                    rows.append({
-                        "date": d, "categoryId": cid, "groupId": gid,
-                        "productId": r.get("productId"), "subTypeName": r.get("subTypeName"),
-                        **{f: r.get(f) for f in PRICE_FIELDS},
-                    })
+                rows += payload_rows(d, cid, gid, payload)
     return pl.DataFrame(rows, schema=SCHEMA)
+
+
+def snapshot_date() -> date:
+    """Date of the prices the live API is serving now (refreshed daily ~20:00 UTC)."""
+    stamp = http_get(f"{TCGCSV}/last-updated.txt").text.strip()  # e.g. 2026-10-11T20:05:45+0000
+    return date.fromisoformat(stamp[:10])
+
+
+def fetch_live() -> None:
+    """Save the API's current snapshot as one bronze day, exactly like an archive day.
+
+    The archive went offline in 2026; the maintainer asks clients to fetch prices per group
+    and not to request the same file twice in 24h. The day_path() existence check enforces
+    that: a second run on the same snapshot makes no price requests at all."""
+    d = snapshot_date()
+    out = day_path(d)
+    if out.exists():
+        log.info("%s: snapshot already saved, nothing to fetch", d)
+        return
+    groups = pl.read_parquet(SILVER_DIR / "dim_group.parquet").select("categoryId", "groupId").rows()
+    rows = []
+    for i, (cid, gid) in enumerate(groups, 1):
+        rows += payload_rows(d, cid, gid, http_get(f"{TCGCSV}/tcgplayer/{cid}/{gid}/prices").json())
+        time.sleep(0.15)
+        if i % 50 == 0:
+            log.info("  %d/%d groups fetched", i, len(groups))
+    if snapshot_date() != d:  # TCGCSV refreshed mid-run: rows would mix two days
+        raise SystemExit("Snapshot changed during the fetch - re-run to get a consistent day.")
+    df = pl.DataFrame(rows, schema=SCHEMA)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(out)
+    log.info("%s: %d price rows from %d groups (live API)", d, df.height, len(groups))
 
 
 def inspect(d: date) -> None:
@@ -129,6 +168,7 @@ def main() -> None:
     ap.add_argument("--step", type=int, default=7, help="days between samples (7 = weekly)")
     ap.add_argument("--keep-archives", action="store_true", help="keep raw .7z files (large)")
     ap.add_argument("--inspect", type=date.fromisoformat, help="list the members of one archive and exit")
+    ap.add_argument("--live", action="store_true", help="save today's snapshot from the API (archive is offline)")
     args = ap.parse_args()
 
     if args.inspect:
@@ -139,6 +179,11 @@ def main() -> None:
     if not dim_cat.exists():
         raise SystemExit("Run `python -m pipeline.catalog` first.")
     category_ids = set(pl.read_parquet(dim_cat)["categoryId"].to_list())
+
+    if args.live:
+        fetch_live()
+        consolidate()
+        return
 
     d = args.start
     while d <= args.end:

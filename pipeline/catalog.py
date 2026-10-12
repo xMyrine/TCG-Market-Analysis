@@ -69,6 +69,10 @@ def main() -> None:
                              "displayName": c.get("displayName")})
     if not selected:
         raise SystemExit("No categories matched GAMES in common.py - check the regexes.")
+    games = [s["game"] for s in selected]
+    if dupes := {g for g in games if games.count(g) > 1}:
+        # e.g. a new "Riftbound Japan" category would silently mix markets into one index
+        raise SystemExit(f"Games matched several categories: {dupes} - tighten the regexes in common.py.")
     for s in selected:
         log.info("Selected %-10s categoryId=%s (%s)", s["game"], s["categoryId"], s["displayName"])
     pl.DataFrame(selected).write_parquet(SILVER_DIR / "dim_category.parquet")
