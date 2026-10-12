@@ -12,15 +12,20 @@ pip install -r requirements.txt
 
 ## Run, in this order
 
+Always as modules from the project root (`python -m pipeline.x`), never `python pipeline/x.py`:
+the package uses relative imports. In PyCharm use the shared run configurations "1 catalog" .. "4 audit".
+
 ```bash
-python -m pipeline.catalog                       # ~5-15 min: games, sets, products
-python -m pipeline.prices --inspect 2024-02-08   # sanity check: archive layout
-python -m pipeline.prices --step 7               # weekly sample since 2024-02-08
-python -m pipeline.benchmarks                    # S&P 500 TR, T-bill, CPI, EUR/USD
-python -m pipeline.audit                         # data quality report
+python -m pipeline.catalog          # ~45 s: games, sets, products            (daily)
+python -m pipeline.prices --live    # ~45 s: today's price snapshot            (daily, after catalog)
+python -m pipeline.benchmarks       # ~5 s: S&P 500 TR, T-bill, CPI, EUR/USD    (any time)
+python -m pipeline.audit            # data quality report                      (whenever you look)
 ```
 
-Data goes to `./data` (override with `TCG_DATA_DIR=...`). Every step is safe to re-run.
+TCGCSV refreshes prices once a day (~20:00 UTC). A second `--live` run on the same snapshot
+makes no price requests. The historical archive (`--step 7`, `--inspect`) is offline since 2026-10.
+
+Data goes to `<project>/data` (override with `TCG_DATA_DIR=...`). Every step is safe to re-run.
 
 Offline self-test (no network): `TCG_DATA_DIR=/tmp/tcg-sim python -m tests.simulate`
 

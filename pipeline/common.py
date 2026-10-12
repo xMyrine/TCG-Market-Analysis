@@ -16,7 +16,8 @@ from pathlib import Path
 
 import requests
 
-DATA_DIR = Path(os.environ.get("TCG_DATA_DIR", "data"))
+# Anchored to the project root, not the working directory, so IDE runs can't scatter data/.
+DATA_DIR = Path(os.environ.get("TCG_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 RAW_DIR = DATA_DIR / "raw"
 BRONZE_DIR = DATA_DIR / "bronze"
 SILVER_DIR = DATA_DIR / "silver"
