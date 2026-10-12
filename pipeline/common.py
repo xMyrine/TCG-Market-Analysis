@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -39,6 +40,10 @@ log = logging.getLogger("tcg")
 
 
 def setup_logging() -> None:
+    # Windows encodes redirected/piped output with the legacy code page (e.g. cp1250), which
+    # can't represent Polars' box-drawing table borders or card names like "Pokémon δ ☆".
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 

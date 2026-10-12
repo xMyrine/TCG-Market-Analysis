@@ -10,7 +10,7 @@ from __future__ import annotations
 import duckdb
 import polars as pl
 
-from .common import SILVER_DIR
+from .common import SILVER_DIR, setup_logging
 
 pl.Config.set_tbl_rows(30)
 pl.Config.set_tbl_width_chars(140)
@@ -21,6 +21,7 @@ def section(title: str) -> None:
 
 
 def main() -> None:
+    setup_logging()
     con = duckdb.connect()
     for t in ["fact_price", "dim_product", "dim_group", "dim_category"]:
         con.execute(f"CREATE VIEW {t} AS SELECT * FROM read_parquet('{SILVER_DIR / (t + '.parquet')}')")
