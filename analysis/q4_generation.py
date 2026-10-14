@@ -79,7 +79,7 @@ def dummies(df: pl.DataFrame, col: str) -> list[pl.Expr]:
 
 @dataclass(frozen=True)
 class Fit:
-    terms: pl.DataFrame  # era and first-edition coefficients with premiums and 95% intervals
+    terms: pl.DataFrame  # era and first-edition coefficients with price ratios and 95% intervals
     n: int
     sets: int  # clusters
     r2: float
@@ -88,7 +88,7 @@ class Fit:
 def hedonic(df: pl.DataFrame, like_for_like: bool = False) -> Fit:
     """OLS of log price on era + rarity + printing + 1st edition + card class.
 
-    For an era coefficient b, exp(b) - 1 is the price premium over Scarlet & Violet for an
+    For an era coefficient b, exp(b) is the price ratio to Scarlet & Violet for an
     otherwise identical card. It is a ratio of geometric means, not arithmetic means. Standard
     errors cluster by set, because era is a set-level variable and cards from one set are not
     independent draws.
@@ -111,12 +111,9 @@ def hedonic(df: pl.DataFrame, like_for_like: bool = False) -> Fit:
     lo, hi = fit.conf_int().T.values
     out = pl.DataFrame({"term": X.columns, "b": fit.params.values, "se": fit.bse.values, "lo": lo, "hi": hi})
     terms = (out.filter(pl.col("term").str.starts_with("era=") | (pl.col("term") == "first_edition"))
-                .with_columns((pl.col(c).exp() - 1).alias(f"premium_{c}") for c in ["b", "lo", "hi"])
-                .select("term", "b", "se", pl.col("premium_b").alias("premium"),
-                        pl.col("premium_lo").alias("ci95_lo"), pl.col("premium_hi").alias("ci95_hi")))
+                .select("term", "b", "se", pl.col("b").exp().alias("ratio"),
+                        pl.col("lo").exp().alias("ci95_lo"), pl.col("hi").exp().alias("ci95_hi")))
     return Fit(terms, n=int(fit.nobs), sets=df["groupId"].n_unique(), r2=fit.rsquared)
-
-
 
 
 CAVEATS = [
@@ -139,9 +136,7 @@ def era_ratios(fit: Fit) -> pl.DataFrame:
     """Era coefficients as price ratios vs the reference era, oldest first (terms are sorted by era)."""
     return (fit.terms.filter(pl.col("term").str.starts_with("era="))
             .select(pl.col("term").str.replace(r"^era=\d+ ", "").alias("era"),
-                    (pl.col("premium") + 1).alias("ratio"),
-                    (pl.col("ci95_lo") + 1).alias("lo"),
-                    (pl.col("ci95_hi") + 1).alias("hi")))
+                    "ratio", pl.col("ci95_lo").alias("lo"), pl.col("ci95_hi").alias("hi")))
 
 
 def times(x: float) -> str:
@@ -149,9 +144,9 @@ def times(x: float) -> str:
 
 
 def headline(ratios: pl.DataFrame) -> str:
-    oldest = ratios.row(0, named=True)
-    text = (f"For an otherwise identical card, {oldest['era']}-era cards cost {times(oldest['ratio'])} "
-            f"Scarlet & Violet cards (95% CI {times(oldest['lo'])} to {times(oldest['hi'])}).")
+    top = ratios.sort("ratio").row(-1, named=True)
+    text = (f"For an otherwise identical card, {top['era']}-era cards cost {times(top['ratio'])} "
+            f"Scarlet & Violet cards (95% CI {times(top['lo'])} to {times(top['hi'])}).")
     same = ratios.filter((pl.col("lo") <= 1) & (pl.col("hi") >= 1))["era"].to_list()
     if same:
         text += f" The 95% CI includes 1x for {', '.join(same)}."
@@ -188,20 +183,20 @@ def answer(silver: Silver) -> Answer:
     all_rarities = hedonic(df)
     like_for_like = hedonic(df, like_for_like=True)
     ratios = era_ratios(like_for_like)
-    premium_formats = {"b": "%.2f", "se": "%.2f", "premium": "percent", "ci95_lo": "percent", "ci95_hi": "percent"}
-    note = "premium = price ratio - 1, so a premium of 1.0 is a ratio of 2x. "
+    ratio_formats = {"b": "%.2f", "se": "%.2f", "ratio": "%.1fx", "ci95_lo": "%.1fx", "ci95_hi": "%.1fx"}
+    note = "ratio = exp(b), the price of an otherwise identical card relative to Scarlet & Violet. "
     return Answer(
         headline=headline(ratios),
         tables=[
             Table("Price per era", medians,
                   note=f"{df.height:,} price series of Pokemon singles on {silver.last_day}",
                   formats={"median_$": "$%.2f", "geo_mean_$": "$%.2f", "p90_$": "$%.2f", "share_ge_10$": "percent"}),
-            Table("Hedonic A: all rarities with rarity fixed effects, premium vs Scarlet & Violet", all_rarities.terms,
+            Table("Hedonic A: all rarities with rarity fixed effects, price ratio vs Scarlet & Violet", all_rarities.terms,
                   note=note + f"n={all_rarities.n:,}, sets (clusters)={all_rarities.sets}, R2={all_rarities.r2:.3f}",
-                  formats=premium_formats),
+                  formats=ratio_formats),
             Table(f"Hedonic B: like-for-like, shared rarities only ({', '.join(SHARED_RARITIES)})", like_for_like.terms,
                   note=note + f"n={like_for_like.n:,}, sets (clusters)={like_for_like.sets}, R2={like_for_like.r2:.3f}",
-                  formats=premium_formats),
+                  formats=ratio_formats),
         ],
         chart=ratio_chart(ratios),
         caveats=CAVEATS,
