@@ -2,6 +2,16 @@
 
 Newest first. Each entry: what was decided, why, and what it costs.
 
+## 2026-10-14 — One Streamlit app, no backend or JS frontend
+The dashboard imports the analysis code directly. Each question is a `Question` in
+`analysis/questions.py` whose `answer(silver)` returns an `Answer` (headline, tables, chart,
+caveats). Status (not started, waiting, ready) is derived from the data on every run, never
+stored. Results are cached on the silver files' modification times, so a pipeline run
+invalidates them and a page reload shows the new data. A REST API and a JS frontend would add two
+layers to maintain for a single-user local tool. Cost: the analysis runs inside the Streamlit
+process, so a slow analysis blocks that page until it finishes, and a later move to a hosted
+app means writing an API then.
+
 ## 2026-10-12 — Hedonic regression with set-clustered standard errors (Q4)
 Era is constant within a set, and cards in a set share demand shocks, so cards are not
 independent observations. Clustering by set made SEs 4–9× larger than naive OLS and removed a
