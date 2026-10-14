@@ -1,10 +1,12 @@
-"""Research question 4 - which generation (era) of Pokemon cards is most expensive?
+"""Research question 4. Which generation (era) of Pokemon cards is most expensive?
 
 Run:  python -m analysis.q4_generation
 
-Cross-sectional: needs a single price snapshot, so it works before any history exists.
-1. Medians of log price per era        -> what a "typical" card of each era costs
-2. Hedonic regression of log price     -> the era premium holding rarity/printing/type fixed
+This is a cross-sectional analysis. It needs one price snapshot, so it runs before any price
+history exists.
+1. Median and geometric-mean price per era show what a typical card of each era costs.
+2. A hedonic regression of log price estimates the era premium with rarity, printing and
+   card type held fixed.
 """
 from __future__ import annotations
 
@@ -24,7 +26,8 @@ ERAS = [
 
 
 def load(day: date | None = None) -> pl.DataFrame:
-    """One row per price series (productId x printing): Pokemon singles with a market price."""
+    """Return one row per price series (productId x printing) for Pokemon singles with a market
+    price on `day` (default: the latest date in fact_price)."""
     fact = pl.read_parquet(SILVER_DIR / "fact_price.parquet")
     day = day or fact["date"].max()
     products = pl.read_parquet(SILVER_DIR / "dim_product.parquet").filter(game="pokemon", product_kind="single")
@@ -37,7 +40,7 @@ def load(day: date | None = None) -> pl.DataFrame:
         .join(groups, on="groupId")
         .drop_nulls("release_date")
         .sort("release_date")
-        .join_asof(eras, left_on="release_date", right_on="era_start")  # latest era start <= release
+        .join_asof(eras, left_on="release_date", right_on="era_start")  # the latest era that started on or before release
         .with_columns(
             pl.col("marketPrice").log().alias("log_p"),
             pl.when(card_type.str.contains("Energy")).then(pl.lit("energy"))
@@ -72,9 +75,10 @@ def dummies(df: pl.DataFrame, col: str) -> list[pl.Expr]:
 def hedonic(df: pl.DataFrame, like_for_like: bool = False) -> pl.DataFrame:
     """OLS of log price on era + rarity + printing + 1st edition + card class.
 
-    Era coefficient b -> exp(b) - 1 = price premium vs Scarlet & Violet for an otherwise
-    identical card (a ratio of geometric means, not of arithmetic means). Standard errors
-    are clustered by set: era is a set-level variable, so cards are not independent draws.
+    For an era coefficient b, exp(b) - 1 is the price premium over Scarlet & Violet for an
+    otherwise identical card. It is a ratio of geometric means, not arithmetic means. Standard
+    errors cluster by set, because era is a set-level variable and cards from one set are not
+    independent draws.
     """
     import numpy as np
     import statsmodels.api as sm
@@ -107,7 +111,7 @@ def main() -> None:
     df = load()
     print(f"{df.height} price series of Pokemon singles on {df['date'][0]}\n")
     print(era_medians(df))
-    print("\nHedonic A: all rarities (rarity fixed effects); premium vs Scarlet & Violet")
+    print("\nHedonic A: all rarities with rarity fixed effects, premium vs Scarlet & Violet")
     print(hedonic(df))
     print("\nHedonic B: like-for-like, shared rarities only", SHARED_RARITIES)
     print(hedonic(df, like_for_like=True))

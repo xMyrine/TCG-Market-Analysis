@@ -1,13 +1,13 @@
-"""Step 1c - the benchmarks the card markets are compared against.
+"""Step 1c. Download the benchmarks that the card markets are compared against.
 
 Run:  python -m pipeline.benchmarks
 
-Outputs data/silver/benchmarks.parquet in long format: (date, series, value)
-    SP500TR   S&P 500 total return index (dividends reinvested)  <- the fair benchmark
-    SP500     S&P 500 price index (no dividends)                 <- kept to show the difference
-    DTB3      3-month US T-bill rate, % per year                 <- risk-free rate for Sharpe ratios
-    CPIAUCSL  US consumer price index                            <- for inflation-adjusted returns
-    DEXUSEU   USD per 1 EUR                                      <- to convert Cardmarket EUR prices
+Outputs data/silver/benchmarks.parquet in long format (date, series, value):
+    SP500TR   S&P 500 total return index (dividends reinvested). The main benchmark.
+    SP500     S&P 500 price index (no dividends). Kept to show how much dividends add.
+    DTB3      3-month US T-bill rate, % per year. The risk-free rate for Sharpe ratios.
+    CPIAUCSL  US consumer price index. Used for inflation-adjusted returns.
+    DEXUSEU   USD per 1 EUR. Used to convert Cardmarket EUR prices.
 """
 from __future__ import annotations
 

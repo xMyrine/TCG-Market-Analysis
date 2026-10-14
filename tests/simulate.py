@@ -1,4 +1,5 @@
-"""Offline end-to-end test: fake catalogue + fake PPMd archives -> prices -> audit.
+"""Offline end-to-end test. It builds a fake catalogue and fake PPMd archives, then runs the
+prices step and the audit on them.
 
 Run:  TCG_DATA_DIR=/tmp/tcg-sim python -m tests.simulate
 It never touches the network: prices.download() reuses archives already on disk.
@@ -22,7 +23,8 @@ from pipeline.catalog import classify
 random.seed(0)
 ensure_dirs()
 
-# --- fake dimensions: Pokemon (3) and a made-up Riftbound id, plus a game we must ignore (1)
+# --- Fake dimensions for Pokemon (category 3) and Riftbound (made-up category 89). The archives
+# below also hold category 1, a game the pipeline must ignore.
 pl.DataFrame({"game": ["pokemon", "riftbound"], "categoryId": [3, 89],
               "name": ["Pokemon", "Riftbound"], "displayName": ["Pokemon", "Riftbound"]}
              ).write_parquet(SILVER_DIR / "dim_category.parquet")
@@ -44,7 +46,7 @@ pl.DataFrame({"game": ["pokemon", "riftbound"], "categoryId": [3, 89], "groupId"
               "release_date": [date(2023, 9, 22), date(2025, 10, 31)]}
              ).write_parquet(SILVER_DIR / "dim_group.parquet")
 
-# --- fake archives mirroring the real layout <date>/<categoryId>/<groupId>/prices
+# --- Fake archives mirroring the real layout <date>/<categoryId>/<groupId>/prices
 days = [date(2024, 2, 8) + timedelta(days=7 * i) for i in range(5)]
 (RAW_DIR / "archives").mkdir(parents=True, exist_ok=True)
 for d in days:
@@ -64,7 +66,7 @@ for d in days:
 sys.argv = ["prices", "--start", days[0].isoformat(), "--end", days[-1].isoformat(), "--step", "7"]
 prices.main()
 fact = pl.read_parquet(SILVER_DIR / "fact_price.parquet")
-assert fact.height == 5 * 6, fact.height                # 5 days x 6 products; category 1 dropped
+assert fact.height == 5 * 6, fact.height                # 5 days x 6 products, category 1 dropped
 assert 999 not in fact["productId"].to_list()
 print("prices OK:", fact.height, "rows")
 

@@ -1,7 +1,7 @@
 """Shared configuration and helpers for the TCG market pipeline.
 
 Storage layout (a small "medallion" layout):
-    data/raw/      files exactly as downloaded (archives, JSON) - disposable, re-downloadable
+    data/raw/      files exactly as downloaded (archives, JSON), safe to delete and download again
     data/bronze/   parsed but unmodified rows, one Parquet file per source day
     data/silver/   cleaned, typed, joined tables that analysis code reads
 """
@@ -24,9 +24,9 @@ SILVER_DIR = DATA_DIR / "silver"
 
 TCGCSV = "https://tcgcsv.com"
 
-# Games to ingest: key -> regex matched against TCGplayer category name/displayName.
-# Pokemon and Riftbound answer the core questions. The commented games are the
-# "panel" we will need later for the player-base question (n=2 games is not enough).
+# Games to ingest. Each key maps to a regex matched against the TCGplayer category name or
+# displayName. Pokemon and Riftbound answer the core questions. The commented-out games are
+# for the player-base question later, which needs more than two games to compare.
 GAMES: dict[str, str] = {
     "pokemon": r"^pok[eé]mon$",
     "riftbound": r"riftbound",
@@ -58,14 +58,14 @@ _session.headers["User-Agent"] = USER_AGENT
 
 
 def http_get(url: str, *, retries: int = 4, timeout: int = 60, stream: bool = False) -> requests.Response:
-    """GET with exponential backoff. TCGCSV is a free community service - be polite."""
+    """GET with exponential backoff. TCGCSV is a free community service, so keep the request rate low."""
     for attempt in range(retries):
         try:
             r = _session.get(url, timeout=timeout, stream=stream)
             if r.status_code == 404:
-                return r  # caller decides; e.g. a missing archive day
+                return r  # the caller handles it, e.g. a missing archive day
             if 400 <= r.status_code < 500 and r.status_code != 429:
-                # client errors are deterministic: retrying only adds load to the server
+                # a client error repeats on every attempt, so retrying only adds load to the server
                 raise RuntimeError(f"GET {url} -> HTTP {r.status_code}:\n{r.text[:1000]}")
             r.raise_for_status()
             return r
