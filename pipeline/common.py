@@ -35,7 +35,8 @@ GAMES: dict[str, str] = {
     # "star_wars_unlimited": r"star wars.*unlimited",
 }
 
-USER_AGENT = "tcg-market-analysis/0.1 (personal learning project)"
+# FRED drops requests whose User-Agent has a parenthesised comment without a URL.
+USER_AGENT = "tcg-market-analysis/0.1 (+https://github.com/xMyrine/TCG-Market-Analysis)"
 
 log = logging.getLogger("tcg")
 
