@@ -1,4 +1,4 @@
-"""Step 1a - build the dimension tables: which games, sets (groups) and products exist.
+"""Step 1a. Build the dimension tables listing which games, sets (groups) and products exist.
 
 Run:  python -m pipeline.catalog
 
@@ -7,8 +7,8 @@ Outputs:
     data/silver/dim_group.parquet      one row per set (groupId), with release date
     data/silver/dim_product.parquet    one row per product, with card number, rarity and product_kind
 
-Prices are NOT here - they live in a separate fact table (see prices.py). This is a
-star schema: small descriptive dimension tables joined to one large, narrow fact table.
+Prices are not here. They live in a separate fact table (see prices.py). This is a star
+schema, with small descriptive dimension tables joined to one large, narrow fact table.
 """
 from __future__ import annotations
 
@@ -21,8 +21,9 @@ import polars as pl
 from .common import (SILVER_DIR, TCGCSV, ensure_dirs, get_results, log, match_game,
                      setup_logging)
 
-# A standalone accessory names one AND nothing implying booster packs inside: on real data,
-# "Sleeved Booster Pack", "Pin Collection" and "Binder Collection" are all sealed product.
+# A product is an accessory only if its name matches ACCESSORY_RE and nothing in HAS_PACKS_RE.
+# In the real catalogue, "Sleeved Booster Pack", "Pin Collection" and "Binder Collection" are
+# all sealed product.
 ACCESSORY_RE = re.compile(
     r"sleeves?\b|playmat|play mat|deck box|binder|portfolio|dice|coin|damage counter|"
     r"toploader|storage|album|plush|lanyard|card case",
@@ -36,13 +37,14 @@ HAS_PACKS_RE = re.compile(
 
 
 def classify(name: str, ext: dict[str, str]) -> str:
-    """single / sealed / accessory / code_card.
+    """Return one of single, sealed, accessory or code_card.
 
-    Structured extendedData decides card vs not-a-card; the name only finds the rare
-    accessory. Audited on the 2026-10 catalogue (30-product samples per class): within the
-    Pokemon and Riftbound categories nearly every non-card is sealed (TCGplayer sells
-    supplies in a separate category), so sealed is the default, not a leftover 'other'.
-    Code Cards (digital redemption codes) carry Rarity="Code Card" and must not count as singles.
+    The structured extendedData fields decide whether a product is a card. The name is only
+    used to find the rare accessory. An audit of the 2026-10 catalogue (30-product samples per
+    class) found that nearly every non-card in the Pokemon and Riftbound categories is sealed,
+    because TCGplayer sells supplies in a separate category. That is why sealed is the default
+    rather than an 'other' bucket. Code Cards (digital redemption codes) carry
+    Rarity="Code Card" and must not count as singles.
     """
     if ext.get("Rarity") == "Code Card" or re.search(r"code card", name, re.IGNORECASE):
         return "code_card"
@@ -69,11 +71,11 @@ def main() -> None:
             selected.append({"game": game, "categoryId": c["categoryId"], "name": c.get("name"),
                              "displayName": c.get("displayName")})
     if not selected:
-        raise SystemExit("No categories matched GAMES in common.py - check the regexes.")
+        raise SystemExit("No categories matched GAMES in common.py. Check the regexes.")
     games = [s["game"] for s in selected]
     if dupes := {g for g in games if games.count(g) > 1}:
         # e.g. a new "Riftbound Japan" category would silently mix markets into one index
-        raise SystemExit(f"Games matched several categories: {dupes} - tighten the regexes in common.py.")
+        raise SystemExit(f"Games matched several categories: {dupes}. Tighten the regexes in common.py.")
     for s in selected:
         log.info("Selected %-10s categoryId=%s (%s)", s["game"], s["categoryId"], s["displayName"])
     pl.DataFrame(selected).write_parquet(SILVER_DIR / "dim_category.parquet")
@@ -98,7 +100,7 @@ def main() -> None:
                     "product_kind": classify(p.get("name", ""), ext),
                     "url": p.get("url"), "extended_json": json.dumps(ext, ensure_ascii=False),
                 })
-            time.sleep(0.15)  # politeness: ~7 requests/second at most
+            time.sleep(0.15)  # keeps us under ~7 requests per second to TCGCSV
             if i % 50 == 0:
                 log.info("  %d/%d groups done", i, len(groups))
 

@@ -1,4 +1,4 @@
-"""Step 1b - download TCGCSV's daily price archives and keep only our games.
+"""Step 1b. Download TCGCSV's daily price archives and keep only our games.
 
 Run:
     python -m pipeline.prices --inspect 2024-02-08     # look inside one archive first
@@ -6,16 +6,16 @@ Run:
     python -m pipeline.prices --step 1                 # later: fill in every day
     python -m pipeline.prices --live                   # current snapshot via the API (run daily)
 
-NOTE (2026-10): TCGCSV has taken the archive offline (403 with a notice); --live is the
-only working source until it returns. Both paths write the same bronze day files.
+NOTE (2026-10): TCGCSV has taken the archive offline (it returns 403 with a notice). Until it
+comes back, --live is the only working source. Both paths write the same bronze day files.
 
 Each archive is a full snapshot of TCGplayer prices for every game on one day. We
 extract only the selected categories, parse them into rows and write one Parquet file
-per day under data/bronze/prices/date=YYYY-MM-DD/. Then all days are consolidated into
+per day under data/bronze/prices/date=YYYY-MM-DD/. consolidate() then unions all days into
 data/silver/fact_price.parquet.
 
-Re-running is safe (idempotent): days that already have a Parquet file are skipped, so a
-crash or Ctrl-C costs nothing, and `--step 1` after `--step 7` only fetches the gaps.
+Re-running is safe (idempotent). The script skips days that already have a Parquet file, so a
+crash or Ctrl-C loses no finished days, and `--step 1` after `--step 7` only fetches the gaps.
 """
 from __future__ import annotations
 
@@ -63,13 +63,13 @@ def download(d: date) -> Path | None:
     with open(tmp, "wb") as f:
         for chunk in r.iter_content(1 << 20):
             f.write(chunk)
-    tmp.rename(dest)  # atomic: a half-downloaded file never looks finished
+    tmp.rename(dest)  # rename is atomic, so a half-downloaded file never gets the final name
     return dest
 
 
 def parse_member(name: str) -> tuple[int, int] | None:
-    """Archive members look like  <date>/<categoryId>/<groupId>/prices .
-    Returns (categoryId, groupId), or None for anything that isn't a prices file."""
+    """Parse an archive member path of the form <date>/<categoryId>/<groupId>/prices.
+    Return (categoryId, groupId), or None for anything that isn't a prices file."""
     parts = PurePosixPath(name).parts
     if len(parts) < 3 or parts[-1] != "prices":
         return None
@@ -80,7 +80,7 @@ def parse_member(name: str) -> tuple[int, int] | None:
 
 
 def payload_rows(d: date, cid: int, gid: int, payload: dict | list) -> list[dict]:
-    """One TCGCSV prices file (archive member or live API response) -> fact rows."""
+    """Convert one TCGCSV prices file (archive member or live API response) into fact rows."""
     results = payload.get("results", []) if isinstance(payload, dict) else payload
     return [{"date": d, "categoryId": cid, "groupId": gid,
              "productId": r.get("productId"), "subTypeName": r.get("subTypeName"),
@@ -108,11 +108,11 @@ def snapshot_date() -> date:
 
 
 def fetch_live() -> None:
-    """Save the API's current snapshot as one bronze day, exactly like an archive day.
+    """Save the API's current snapshot as one bronze day, in the same format as an archive day.
 
-    The archive went offline in 2026; the maintainer asks clients to fetch prices per group
-    and not to request the same file twice in 24h. The day_path() existence check enforces
-    that: a second run on the same snapshot makes no price requests at all."""
+    The archive went offline in 2026. The maintainer asks clients to fetch prices per group
+    and not to request the same file twice in 24h. The day_path() existence check enforces the
+    second rule, so a second run on the same snapshot makes no price requests."""
     d = snapshot_date()
     out = day_path(d)
     if out.exists():
@@ -125,8 +125,8 @@ def fetch_live() -> None:
         time.sleep(0.15)
         if i % 50 == 0:
             log.info("  %d/%d groups fetched", i, len(groups))
-    if snapshot_date() != d:  # TCGCSV refreshed mid-run: rows would mix two days
-        raise SystemExit("Snapshot changed during the fetch - re-run to get a consistent day.")
+    if snapshot_date() != d:  # TCGCSV refreshed mid-run, so the rows would mix two days
+        raise SystemExit("Snapshot changed during the fetch. Re-run to get a consistent day.")
     df = pl.DataFrame(rows, schema=SCHEMA)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.write_parquet(out)
@@ -145,7 +145,7 @@ def inspect(d: date) -> None:
 
 
 def consolidate() -> None:
-    """Union every daily file into one silver fact table, sorted for fast time-series reads."""
+    """Union every daily file into one silver fact table, sorted so each price series is contiguous."""
     pattern = str(BRONZE_DIR / "prices" / "*" / "part.parquet")
     out = SILVER_DIR / "fact_price.parquet"
     con = duckdb.connect()

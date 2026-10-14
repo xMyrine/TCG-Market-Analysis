@@ -1,9 +1,9 @@
-"""Step 2 - audit the data before analysing it.
+"""Step 2. Audit the data before analysing it.
 
 Run:  python -m pipeline.audit
 
-Every check here answers "can I trust this table for the questions I want to ask?".
-Nothing is fixed automatically; the point is to see the problems and decide on rules.
+Each check tests whether a table is fit for the research questions. The script only prints
+results and changes no data. Cleaning rules come from reading its output.
 """
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def main() -> None:
     q("""SELECT game, product_kind, count(DISTINCT productId) AS products,
                 count(DISTINCT productId) FILTER (WHERE marketPrice IS NOT NULL) AS with_market_price
          FROM p GROUP BY ALL ORDER BY game, products DESC""")
-    print("Name-rule decisions need a look - accessories, and sealed products naming an accessory:")
+    print("Check these name-rule decisions by eye (accessories, and sealed products whose name mentions an accessory):")
     # USING SAMPLE runs before WHERE, so filter in a subquery first, then sample.
     q("""SELECT * FROM (SELECT game, product_kind, name FROM dim_product
                        WHERE product_kind = 'accessory'
@@ -82,7 +82,7 @@ def main() -> None:
                 median(n_obs) AS median, quantile_cont(n_obs, 0.75) AS q75, max(n_obs) AS max
          FROM s GROUP BY game ORDER BY game""")
 
-    section("9. Price distribution (heavy tails -> use medians and logs)")
+    section("9. Price distribution (heavy tails, so use medians and logs)")
     q("""SELECT game, product_kind,
                 quantile_cont(marketPrice, 0.5)  AS p50,
                 quantile_cont(marketPrice, 0.9)  AS p90,

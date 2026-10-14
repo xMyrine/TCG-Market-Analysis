@@ -73,14 +73,22 @@ Data goes to `<project>/data` (override with `TCG_DATA_DIR=...`). Every step is 
 
 Offline self-test (no network): `TCG_DATA_DIR=/tmp/tcg-sim python -m tests.simulate`
 
+Dashboard tests (the app test needs `data/silver`): `python -m unittest tests.test_questions tests.test_app`
+
 Analyses (one module per research question): `python -m analysis.q4_generation`
+
+Dashboard with the answer to each question from the data so far, and how many days of history the
+others still need: `streamlit run app.py`. Reload the page after `python -m pipeline.prices --live`
+to see new results.
 
 ## Repository layout
 
 ```
+app.py      dashboard (streamlit run app.py): overview plus one tab per research question
 pipeline/   data ingestion: catalog -> prices -> benchmarks -> audit (writes data/)
-analysis/   one module per research question (reads data/silver/)
-tests/      offline end-to-end test on simulated data
+analysis/   data.py loads data/silver/, results.py defines Answer, questions.py lists the six
+            questions and their status, qN_*.py holds one analysis per question
+tests/      offline end-to-end test on simulated data, plus status and dashboard tests
 docs/       data notes, decision log, findings per question
 data/       not in git: raw -> bronze (per-day Parquet) -> silver (analysis tables)
 ```
