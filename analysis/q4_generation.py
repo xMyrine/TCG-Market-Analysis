@@ -199,7 +199,7 @@ def answer(silver: Silver) -> Answer:
             Table("Hedonic A: all rarities with rarity fixed effects, premium vs Scarlet & Violet", all_rarities.terms,
                   note=note + f"n={all_rarities.n:,}, sets (clusters)={all_rarities.sets}, R2={all_rarities.r2:.3f}",
                   formats=premium_formats),
-            Table(f"Hedonic B: like-for-like, shared rarities only {SHARED_RARITIES}", like_for_like.terms,
+            Table(f"Hedonic B: like-for-like, shared rarities only ({', '.join(SHARED_RARITIES)})", like_for_like.terms,
                   note=note + f"n={like_for_like.n:,}, sets (clusters)={like_for_like.sets}, R2={like_for_like.r2:.3f}",
                   formats=premium_formats),
         ],
